@@ -920,8 +920,9 @@
                 // Dynamic Height for scrollable chart
                 const barChartHeight = Math.max(300, activeHabits.length * 40);
 
+                // PERBAIKAN 1: Menambahkan ID 'charts-container' pada div pembungkus grafik
                 let chartsHTML = `
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
+                    <div id="charts-container" class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
                         <div class="bg-slate-800/50 border border-white/5 p-4 rounded-2xl">
                             <h5 class="text-sm font-semibold text-slate-300 mb-4">Performa Kebiasaan</h5>
                             <div class="relative w-full h-[300px] overflow-y-auto custom-scrollbar chart-scroll-container">
@@ -1076,6 +1077,17 @@
                 heatmapSection.remove();
             }
 
+            // PERBAIKAN 2: Ubah layout Grid Grafik menjadi 1 Kolom (Vertikal)
+            const chartsContainer = clone.querySelector('#charts-container');
+            if (chartsContainer) {
+                // Hapus class grid-cols-2 (tampilan samping-samping)
+                chartsContainer.classList.remove('md:grid-cols-2');
+                // Paksa menjadi 1 kolom (tampilan atas-bawah)
+                chartsContainer.classList.add('grid-cols-1');
+                // Tambah jarak antar grafik agar tidak terlalu rapat
+                chartsContainer.classList.add('gap-y-8'); 
+            }
+
             // --- FIX FOR CHART.JS CANVAS & SCROLL ---
             const originalCanvases = reportElement.querySelectorAll('canvas');
             const cloneCanvases = clone.querySelectorAll('canvas');
@@ -1085,6 +1097,12 @@
                 const destCtx = destCanvas.getContext('2d');
                 destCanvas.width = canvas.width;
                 destCanvas.height = canvas.height;
+                
+                // PERBAIKAN 3: Pastikan Canvas menyesuaikan lebar container baru (100%)
+                // Ini mencegah canvas "keluar" dari kertas jika ukurannya terlalu lebar
+                destCanvas.style.width = '100%';
+                destCanvas.style.height = 'auto'; 
+                
                 destCtx.drawImage(canvas, 0, 0);
             });
 
