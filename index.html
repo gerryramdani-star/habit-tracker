@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Habit Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Library untuk PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- Library untuk Drag-and-Drop -->
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a; /* slate-900 fallback */
+            background-image: 
+                radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
+                radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%), 
+                radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
+            background-attachment: fixed;
+            background-size: cover;
+            color: #e2e8f0; /* slate-200 */
+        }
+
+        /* Glassmorphism Utilities */
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.4); /* slate-800 with opacity */
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .glass-input {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: white;
+            transition: all 0.3s ease;
+        }
+        .glass-input:focus {
+            background: rgba(15, 23, 42, 0.8);
+            border-color: #6366f1; /* indigo-500 */
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.3);
+        }
+
+        .glass-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.2s;
+            backdrop-filter: blur(4px);
+        }
+        .glass-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .glass-btn-primary {
+            background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%);
+            border: none;
+            color: white;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+        }
+        .glass-btn-primary:hover {
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+            transform: translateY(-1px);
+        }
+
+        /* Habit Cell Styles */
+        .habit-cell {
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            width: 45px;
+            height: 45px;
+            position: relative;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .habit-cell:hover {
+            background: rgba(255, 255, 255, 0.08);
+            transform: scale(1.05);
+        }
+        .habit-cell.completed {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            border-color: transparent;
+            color: white;
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
+        }
+        .habit-cell.completed::before {
+            content: ''; 
+            /* Icon handled by SVG in JS now for cleaner look, or kept simple checkmark */
+        }
+        .habit-cell.disabled {
+            background-color: rgba(0, 0, 0, 0.2);
+            cursor: not-allowed;
+            opacity: 0.5;
+            border: none;
+        }
+        .habit-cell.disabled:hover {
+            transform: none;
+            background-color: rgba(0, 0, 0, 0.2);
+        }
+
+        /* Action Buttons */
+        .action-btn {
+             cursor: pointer;
+             opacity: 0;
+             transition: all 0.2s;
+             padding: 6px;
+             border-radius: 6px;
+        }
+        .action-btn:hover {
+            background: rgba(255,255,255,0.1);
+        }
+        tr:hover .action-btn {
+            opacity: 0.7;
+        }
+        tr:hover .action-btn:hover {
+            opacity: 1;
+        }
+
+        /* Note Indicator */
+        .note-indicator, .edit-note-btn {
+            position: absolute;
+            bottom: -2px;
+            right: -2px;
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            z-index: 10;
+            background-color: #f59e0b; /* amber-500 */
+            border-radius: 50%;
+            font-size: 0.65rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .edit-note-btn {
+            background-color: #3b82f6; /* blue-500 */
+            opacity: 0;
+            transition: opacity 0.2s ease-in-out;
+        }
+        .habit-cell:hover .edit-note-btn {
+            opacity: 1;
+        }
+
+        /* Modal Transitions */
+        #note-modal, #report-modal {
+            transition: opacity 0.3s ease;
+            backdrop-filter: blur(5px);
+            background-color: rgba(0, 0, 0, 0.6);
+        }
+        .modal-content {
+            background: rgba(30, 41, 59, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Week Selector */
+        .week-btn {
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: rgba(255, 255, 255, 0.03);
+            color: #94a3b8;
+            border: 1px solid transparent;
+        }
+        .week-btn:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #e2e8f0;
+        }
+        .week-btn.active {
+            background: rgba(59, 130, 246, 0.15);
+            color: #60a5fa; /* blue-400 */
+            border-color: rgba(59, 130, 246, 0.3);
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.1);
+        }
+
+        /* Nav Buttons */
+        .nav-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 9999px;
+            color: #e2e8f0;
+            transition: all 0.2s;
+        }
+        .nav-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: scale(1.1);
+        }
+
+        /* Report Heatmap */
+        .heatmap-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 6px;
+        }
+        .heatmap-day {
+            width: 100%;
+            padding-bottom: 100%;
+            position: relative;
+            border-radius: 6px;
+            transition: transform 0.2s;
+        }
+        .heatmap-day:hover {
+            transform: scale(1.1);
+            z-index: 10;
+        }
+        .heatmap-day-content {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            color: rgba(255,255,255,0.7);
+            font-weight: 600;
+        }
+
+        /* Drag Handle */
+        .drag-handle {
+            cursor: grab;
+            padding: 8px;
+            color: #64748b;
+            border-radius: 4px;
+            transition: color 0.2s;
+        }
+        .drag-handle:hover {
+            color: #94a3b8;
+            background: rgba(255,255,255,0.05);
+        }
+        .drag-handle:active {
+            cursor: grabbing;
+        }
+        .sortable-ghost {
+            opacity: 0.4;
+            background-color: rgba(59, 130, 246, 0.2);
+        }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.1); 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.1); 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255,255,255,0.2); 
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4 sm:p-8">
+
+    <!-- Background Blobs for visual depth -->
+    <div class="fixed top-20 left-20 w-72 h-72 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
+    <div class="fixed top-20 right-20 w-72 h-72 bg-blue-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
+    <div class="fixed -bottom-8 left-40 w-72 h-72 bg-indigo-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-4000"></div>
+
+    <div class="w-full max-w-5xl mx-auto glass-panel rounded-2xl p-6 sm:p-8 relative z-10">
+        <header class="mb-8 flex flex-col lg:flex-row justify-between items-center gap-6 border-b border-white/10 pb-6">
+            <div class="flex flex-col lg:flex-row items-center justify-center lg:justify-start gap-4 text-center lg:text-left">
+    <!-- Ikon dari Raw Github -->
+    <img src="https://raw.githubusercontent.com/gerryramdani-star/suarapro-azure/refs/heads/main/asset/habit%20tracker%20logo.png" 
+         alt="Logo" 
+         class="w-12 h-12 drop-shadow-lg hover:scale-110 transition-transform duration-300">
+    
+    <!-- Judul dengan warna kustom -->
+    <div>
+        <h1 class="text-3xl md:text-4xl font-bold tracking-tight">
+            <span class="text-white drop-shadow-md">Habit</span>
+            <span class="text-pink-400 drop-shadow-md">Tracker</span>
+        </h1>
+        <p class="text-slate-400 mt-1 text-sm font-light">Bangun rutinitas, raih impianmu.</p>
+    </div>
+</div>
+            <div class="flex flex-wrap justify-center gap-3">
+                <button id="import-btn-label" class="glass-btn text-sm font-medium py-2.5 px-4 rounded-xl flex items-center gap-2 text-slate-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+                    Import
+                </button>
+                <input type="file" id="import-file-input" class="hidden" accept=".json">
+                <button id="export-btn" class="glass-btn text-sm font-medium py-2.5 px-4 rounded-xl flex items-center gap-2 text-slate-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>
+                    Export
+                </button>
+                <button id="show-report-btn" class="glass-btn text-sm font-medium py-2.5 px-4 rounded-xl flex items-center gap-2 text-blue-300 border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z" /><path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z" /></svg>
+                    Laporan
+                </button>
+            </div>
+        </header>
+        
+        <div id="navigation-controls" class="mb-8 flex flex-col md:flex-row justify-between items-center gap-6">
+            <div class="flex items-center gap-4 bg-slate-800/40 p-1.5 rounded-full border border-white/5">
+                <button id="prev-month-btn" class="nav-btn group">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 group-hover:-translate-x-0.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+                </button>
+                <h2 id="month-display" class="text-lg font-semibold text-white w-40 text-center tracking-wide"></h2>
+                <button id="next-month-btn" class="nav-btn group">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 group-hover:translate-x-0.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+                </button>
+            </div>
+            <div id="week-selector" class="flex items-center bg-slate-800/40 rounded-xl p-1.5 gap-1 border border-white/5 overflow-x-auto max-w-full">
+                <!-- Tombol pekan akan dibuat oleh JavaScript -->
+            </div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-3 mb-8">
+            <div class="relative flex-grow">
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                </div>
+                <input type="text" id="new-habit-input" placeholder="Apa targetmu hari ini?" class="glass-input w-full pl-10 pr-4 py-3.5 rounded-xl focus:outline-none text-sm placeholder-slate-400">
+            </div>
+            <button id="add-habit-btn" class="glass-btn-primary font-semibold py-3.5 px-8 rounded-xl transition duration-200 shadow-lg flex items-center justify-center gap-2 text-sm">
+                <span>Tambah</span>
+            </button>
+        </div>
+
+        <div class="overflow-x-auto rounded-2xl border border-white/5 bg-slate-900/20">
+            <table id="habit-table" class="w-full border-collapse text-left">
+                <thead></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <footer class="mt-10 text-center text-xs text-slate-500 font-light">
+            <p>Crafted with ❤️ by Om Ger | Ai-Labs</p>
+        </footer>
+    </div>
+
+    <!-- Modal untuk Catatan -->
+    <div id="note-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 hidden opacity-0">
+        <div class="modal-content w-full max-w-md rounded-2xl p-6 transform transition-all scale-95">
+            <h3 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                <span class="bg-amber-500/20 text-amber-400 p-1.5 rounded-lg">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                </span>
+                Catatan Harian
+            </h3>
+            <textarea id="note-textarea" class="glass-input w-full h-32 p-4 rounded-xl focus:outline-none text-sm leading-relaxed resize-none" placeholder="Bagaimana progresmu hari ini?"></textarea>
+            <div class="mt-6 flex justify-end gap-3">
+                <button id="cancel-note-btn" class="glass-btn text-slate-300 px-5 py-2 rounded-xl hover:text-white text-sm">Batal</button>
+                <button id="save-note-btn" class="glass-btn-primary px-6 py-2 rounded-xl text-sm font-medium">Simpan</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal untuk Laporan -->
+    <div id="report-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 hidden opacity-0">
+        <div class="modal-content w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl p-8 transform transition-all scale-95">
+            <div class="flex justify-between items-center mb-8">
+                <h3 class="text-2xl font-bold text-white flex items-center gap-3">
+                    <span class="bg-indigo-500/20 text-indigo-400 p-2 rounded-xl">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                    </span>
+                    Laporan Kebiasaan
+                </h3>
+                <button id="close-report-btn" class="text-slate-400 hover:text-white transition-colors p-2 hover:bg-white/10 rounded-lg">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            </div>
+            
+            <div class="flex flex-col md:flex-row gap-4 mb-8 p-5 bg-slate-800/50 rounded-2xl border border-white/5 items-end">
+                <div class="flex-1 w-full">
+                    <label for="report-year" class="block text-xs font-medium text-slate-400 mb-1.5 ml-1">Tahun</label>
+                    <select id="report-year" class="glass-input w-full py-2.5 px-4 rounded-xl focus:outline-none text-sm cursor-pointer [&>option]:bg-slate-800 [&>option]:text-white"></select>
+                </div>
+                <div class="flex-1 w-full">
+                    <label for="report-month" class="block text-xs font-medium text-slate-400 mb-1.5 ml-1">Bulan</label>
+                    <select id="report-month" class="glass-input w-full py-2.5 px-4 rounded-xl focus:outline-none text-sm cursor-pointer [&>option]:bg-slate-800 [&>option]:text-white"></select>
+                </div>
+                <div class="flex-shrink-0 w-full md:w-auto">
+                    <button id="download-pdf-btn" class="glass-btn w-full md:w-auto bg-red-500/10 text-red-400 border-red-500/30 hover:bg-red-500/20 py-2.5 px-6 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+                        Download PDF
+                    </button>
+                </div>
+            </div>
+            
+            <div id="report-content-wrapper">
+                <div id="report-content" class="space-y-8 text-slate-200">
+                    <!-- Konten Laporan akan di-generate di sini -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Elemen Notifikasi -->
+    <div id="notification" class="fixed bottom-6 right-6 glass-panel py-3 px-6 rounded-xl shadow-2xl transform translate-y-20 opacity-0 transition-all duration-500 z-[60] flex items-center gap-3 border-l-4 border-green-500 text-sm font-medium text-white">
+    </div>
+
+    <script>
+        // --- State Management ---
+        let appData = { habits: [], progress: {} };
+        const days = ['S', 'S', 'R', 'K', 'J', 'S', 'M'];
+        let currentEditingNote = { habitId: null, dayIndex: null };
+        
+        const initialDate = new Date();
+        let currentYear = initialDate.getFullYear();
+        let currentMonth = initialDate.getMonth();
+        const firstDayOfMonth = (new Date(currentYear, currentMonth, 1).getDay() + 6) % 7;
+        const dayPositionInGrid = firstDayOfMonth + initialDate.getDate() - 1;
+        let currentWeek = Math.floor(dayPositionInGrid / 7);
+
+
+        // --- DOM Elements ---
+        const newHabitInput = document.getElementById('new-habit-input');
+        const addHabitBtn = document.getElementById('add-habit-btn');
+        const habitTable = document.getElementById('habit-table');
+        const tableHead = habitTable.querySelector('thead');
+        const tableBody = habitTable.querySelector('tbody');
+        const noteModal = document.getElementById('note-modal');
+        const noteTextarea = document.getElementById('note-textarea');
+        const saveNoteBtn = document.getElementById('save-note-btn');
+        const cancelNoteBtn = document.getElementById('cancel-note-btn');
+        const monthDisplay = document.getElementById('month-display');
+        const weekSelector = document.getElementById('week-selector');
+        const prevMonthBtn = document.getElementById('prev-month-btn');
+        const nextMonthBtn = document.getElementById('next-month-btn');
+        const showReportBtn = document.getElementById('show-report-btn');
+        const reportModal = document.getElementById('report-modal');
+        const closeReportBtn = document.getElementById('close-report-btn');
+        const reportYearSelect = document.getElementById('report-year');
+        const reportMonthSelect = document.getElementById('report-month');
+        const reportContent = document.getElementById('report-content');
+        const downloadPdfBtn = document.getElementById('download-pdf-btn');
+        const exportBtn = document.getElementById('export-btn');
+        const importBtnLabel = document.getElementById('import-btn-label');
+        const importFileInput = document.getElementById('import-file-input');
+        const notification = document.getElementById('notification');
+
+        // --- Utility Functions ---
+        function showNotification(message, isError = false) {
+            notification.textContent = message;
+            notification.style.borderLeftColor = isError ? '#ef4444' : '#10b981'; // red-500 vs green-500
+            notification.classList.remove('translate-y-20', 'opacity-0');
+
+            setTimeout(() => {
+                notification.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+
+        function getCellDate(year, month, week, dayIndex) {
+            const firstDateOfMonth = new Date(year, month, 1);
+            const firstDayOfMonth = (firstDateOfMonth.getDay() + 6) % 7; // 0=Mon, 6=Sun
+            const dayOffset = (week * 7) + dayIndex - firstDayOfMonth;
+            const cellDate = new Date(year, month, 1 + dayOffset);
+            return cellDate;
+        }
+
+
+        // --- Core Functions ---
+
+        function saveData() {
+            localStorage.setItem('habitTrackerData', JSON.stringify(appData));
+        }
+
+        function loadData() {
+            const storedData = localStorage.getItem('habitTrackerData');
+            if (storedData) {
+                appData = JSON.parse(storedData);
+                if (!appData.habits) appData.habits = [];
+                appData.habits.forEach(h => {
+                    if (h.isArchived === undefined) {
+                        h.isArchived = false;
+                    }
+                });
+                if (!appData.progress) appData.progress = {};
+            }
+        }
+        
+        function getHabitProgress(habitId, year, month) {
+            if (!appData.progress[year]) appData.progress[year] = {};
+            if (!appData.progress[year][month]) appData.progress[year][month] = {};
+            if (!appData.progress[year][month][habitId]) {
+                appData.progress[year][month][habitId] = {
+                    weeks: Array(5).fill(null).map(() => 
+                        Array(7).fill(null).map(() => ({ completed: false, note: '' }))
+                    )
+                };
+            }
+            return appData.progress[year][month][habitId];
+        }
+
+        function calculateStreak(habitId) {
+            let streak = 0;
+            let checkDate = new Date();
+
+            const today = new Date();
+            const todayYear = today.getFullYear();
+            const todayMonth = today.getMonth();
+            const todayDay = today.getDate();
+            
+            const firstDayOfTodayMonth = (new Date(todayYear, todayMonth, 1).getDay() + 6) % 7;
+            const todayPositionInGrid = firstDayOfTodayMonth + todayDay - 1;
+            const todayWeek = Math.floor(todayPositionInGrid / 7);
+            const todayDayIndex = (today.getDay() + 6) % 7;
+
+            const todayProgress = appData.progress[todayYear]?.[todayMonth]?.[habitId];
+            const completedToday = todayProgress?.weeks[todayWeek]?.[todayDayIndex]?.completed || false;
+
+            if (!completedToday) {
+                checkDate.setDate(checkDate.getDate() - 1);
+            }
+
+            while (true) {
+                const year = checkDate.getFullYear();
+                const month = checkDate.getMonth();
+                const day = checkDate.getDate();
+
+                const firstDayOfMonth = (new Date(year, month, 1).getDay() + 6) % 7;
+                const dayPositionInGrid = firstDayOfMonth + day - 1;
+                const week = Math.floor(dayPositionInGrid / 7);
+                const dayIndex = (checkDate.getDay() + 6) % 7;
+
+                const monthProgress = appData.progress[year]?.[month]?.[habitId];
+                const isCompleted = monthProgress?.weeks[week]?.[dayIndex]?.completed || false;
+
+                if (isCompleted) {
+                    streak++;
+                    checkDate.setDate(checkDate.getDate() - 1);
+                } else {
+                    break;
+                }
+            }
+            return streak;
+        }
+
+        function renderAll() {
+            renderNavigation();
+            renderTable();
+        }
+        
+        function renderNavigation() {
+            const monthName = new Date(currentYear, currentMonth).toLocaleString('id-ID', { month: 'long', year: 'numeric' });
+            monthDisplay.textContent = monthName;
+            
+            weekSelector.innerHTML = '';
+            for (let i = 0; i < 5; i++) {
+                const weekBtn = document.createElement('button');
+                weekBtn.className = `week-btn ${i === currentWeek ? 'active' : ''}`;
+                weekBtn.textContent = `Pekan ${i + 1}`;
+                weekBtn.dataset.weekIndex = i;
+                weekSelector.appendChild(weekBtn);
+            }
+        }
+
+        function renderTable() {
+            tableHead.innerHTML = '';
+            tableBody.innerHTML = '';
+
+            const headerRow = document.createElement('tr');
+            headerRow.className = 'border-b border-white/5';
+            headerRow.innerHTML += `<th class="p-4 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider pl-4">Kebiasaan</th>`;
+            days.forEach(day => {
+                headerRow.innerHTML += `<th class="p-2 text-center text-xs font-bold text-slate-500 uppercase tracking-wider">${day}</th>`;
+            });
+            tableHead.appendChild(headerRow);
+
+            const activeHabits = appData.habits.filter(h => !h.isArchived);
+
+            if (activeHabits.length === 0) {
+                 const emptyRow = document.createElement('tr');
+                 emptyRow.innerHTML = `<td colspan="${days.length + 1}" class="text-center text-slate-500 p-10 italic font-light">Belum ada kebiasaan aktif.<br><span class="text-xs opacity-70">Tambahkan satu di atas untuk memulai perjalananmu!</span></td>`;
+                 tableBody.appendChild(emptyRow);
+            } else {
+                activeHabits.forEach((habit) => {
+                    const habitRow = document.createElement('tr');
+                    habitRow.className = 'border-b border-white/5 hover:bg-white/5 transition-colors group';
+                    habitRow.dataset.id = habit.id;
+                    
+                    const streak = calculateStreak(habit.id);
+                    const streakDisplay = streak > 0 
+                        ? `<span class="flex items-center text-xs bg-orange-500/10 border border-orange-500/20 px-2 py-0.5 rounded-full ml-2" title="${streak} hari beruntun">
+                               <span class="text-orange-400 mr-1">🔥</span>
+                               <span class="font-bold text-orange-400">${streak}</span>
+                           </span>` 
+                        : '';
+
+                    habitRow.innerHTML = `
+                        <td class="p-3 pl-4 font-medium text-slate-200 flex items-center justify-between min-w-[200px]">
+                            <div class="flex items-center gap-3">
+                                <span class="drag-handle" title="Urutkan">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+                                </span>
+                                <span class="text-sm tracking-wide">${habit.name}</span>
+                                ${streakDisplay}
+                            </div>
+                            <div class="flex items-center gap-1">
+                               <span class="action-btn archive-btn text-slate-400 hover:text-blue-400" data-habit-id="${habit.id}" title="Arsipkan">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
+                               </span>
+                               <span class="action-btn delete-btn text-slate-400 hover:text-red-400" data-habit-id="${habit.id}" title="Hapus">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                               </span>
+                            </div>
+                        </td>`;
+                    
+                    const progress = getHabitProgress(habit.id, currentYear, currentMonth);
+                    const weekData = progress.weeks[currentWeek];
+                    weekData.forEach((dayData, dayIndex) => {
+                        const cell = document.createElement('td');
+                        cell.className = 'p-1';
+                        const cellDiv = document.createElement('div');
+                        const cellDate = getCellDate(currentYear, currentMonth, currentWeek, dayIndex);
+                        const isCurrentMonth = cellDate.getMonth() === currentMonth;
+
+                        let cellClasses = 'habit-cell mx-auto flex items-center justify-center text-lg';
+                        if (isCurrentMonth) {
+                            cellClasses += dayData.completed ? ' completed' : '';
+                        } else {
+                            cellClasses += ' disabled';
+                        }
+                        cellDiv.className = cellClasses;
+                        cellDiv.dataset.habitId = habit.id;
+                        cellDiv.dataset.dayIndex = dayIndex;
+                        
+                        // Add date number display
+                        const dateNumberSpan = document.createElement('span');
+                        dateNumberSpan.className = `absolute top-1 left-1.5 text-[9px] font-mono ${isCurrentMonth ? 'text-slate-400' : 'text-slate-600'}`;
+                        dateNumberSpan.textContent = cellDate.getDate();
+                        cellDiv.appendChild(dateNumberSpan);
+
+                        if (isCurrentMonth) {
+                             if (dayData.completed) {
+                                cellDiv.innerHTML += `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>`;
+                            }
+
+                            if (dayData.note) {
+                                cellDiv.innerHTML += `<span class="note-indicator" title="${dayData.note}">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-2.5 w-2.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd" /></svg>
+                                </span>`;
+                            }
+                            cellDiv.innerHTML += `<span class="edit-note-btn" data-habit-id="${habit.id}" data-day-index="${dayIndex}">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-2.5 w-2.5" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" /></svg>
+                            </span>`;
+                        }
+
+                        cell.appendChild(cellDiv);
+                        habitRow.appendChild(cell);
+                    });
+                    tableBody.appendChild(habitRow);
+                });
+            }
+        }
+        
+        function openNoteModal(habitId, dayIndex) {
+            currentEditingNote = { habitId, dayIndex };
+            const progress = getHabitProgress(habitId, currentYear, currentMonth);
+            noteTextarea.value = progress.weeks[currentWeek][dayIndex].note;
+            noteModal.classList.remove('hidden');
+            setTimeout(() => noteModal.classList.remove('opacity-0', 'scale-95'), 10);
+            noteTextarea.focus();
+        }
+
+        function closeNoteModal() {
+            noteModal.classList.add('opacity-0', 'scale-95');
+            setTimeout(() => noteModal.classList.add('hidden'), 300);
+        }
+
+        function handleSaveNote() {
+            const { habitId, dayIndex } = currentEditingNote;
+            if (habitId !== null && dayIndex !== null) {
+                const progress = getHabitProgress(habitId, currentYear, currentMonth);
+                progress.weeks[currentWeek][dayIndex].note = noteTextarea.value.trim();
+                saveData();
+                renderTable();
+                closeNoteModal();
+            }
+        }
+        
+        function handleAddHabit() {
+            const habitName = newHabitInput.value.trim();
+            if (habitName) {
+                const newHabit = {
+                    id: Date.now(),
+                    name: habitName,
+                    isArchived: false,
+                };
+                appData.habits.push(newHabit);
+                newHabitInput.value = '';
+                saveData();
+                renderAll();
+            }
+        }
+
+        function handleTableClick(event) {
+            const target = event.target.closest('.habit-cell, .edit-note-btn, .delete-btn, .archive-btn');
+            if (!target || target.closest('.disabled')) return;
+
+            const habitId = parseInt(target.dataset.habitId);
+            const habit = appData.habits.find(h => h.id === habitId);
+            if (!habit) return;
+
+
+            if (target.classList.contains('habit-cell')) {
+                const dayIndex = parseInt(target.dataset.dayIndex);
+                const progress = getHabitProgress(habitId, currentYear, currentMonth);
+                const dayData = progress.weeks[currentWeek][dayIndex];
+                dayData.completed = !dayData.completed;
+                saveData();
+                renderTable();
+            } else if (target.classList.contains('edit-note-btn')) {
+                const dayIndex = parseInt(target.dataset.dayIndex);
+                openNoteModal(habitId, dayIndex);
+            } else if (target.classList.contains('archive-btn')) {
+                habit.isArchived = true;
+                saveData();
+                renderAll();
+                showNotification("Kebiasaan diarsipkan");
+            } else if (target.classList.contains('delete-btn')) {
+                const habitIndex = appData.habits.findIndex(h => h.id === habitId);
+                if (habitIndex > -1) {
+                    appData.habits.splice(habitIndex, 1);
+                    Object.values(appData.progress).forEach(yearData => {
+                        Object.values(yearData).forEach(monthData => {
+                            delete monthData[habitId];
+                        });
+                    });
+                    saveData();
+                    renderAll();
+                    showNotification("Kebiasaan dihapus permanen", true);
+                }
+            }
+        }
+        
+        function handleWeekChange(event) {
+            const btn = event.target.closest('.week-btn');
+            if (btn) {
+                currentWeek = parseInt(btn.dataset.weekIndex);
+                renderAll();
+            }
+        }
+
+        function changeMonth(direction) {
+            currentMonth += direction;
+            if (currentMonth > 11) {
+                currentMonth = 0;
+                currentYear++;
+            } else if (currentMonth < 0) {
+                currentMonth = 11;
+                currentYear--;
+            }
+            currentWeek = 0;
+            renderAll();
+        }
+
+        function initSortable() {
+            new Sortable(tableBody, {
+                handle: '.drag-handle',
+                animation: 150,
+                ghostClass: 'sortable-ghost',
+                onEnd: function (evt) {
+                    const newOrderIds = Array.from(tableBody.querySelectorAll('tr')).map(row => parseInt(row.dataset.id));
+                    
+                    appData.habits.sort((a, b) => newOrderIds.indexOf(a.id) - newOrderIds.indexOf(b.id));
+
+                    saveData();
+                },
+            });
+        }
+
+        // --- Report Modal Functions ---
+        function openReportModal() {
+            populateReportSelectors();
+            generateReport();
+            reportModal.classList.remove('hidden');
+            setTimeout(() => reportModal.classList.remove('opacity-0', 'scale-95'), 10);
+        }
+
+        function closeReportModal() {
+            reportModal.classList.add('opacity-0', 'scale-95');
+            setTimeout(() => reportModal.classList.add('hidden'), 300);
+        }
+
+        function populateReportSelectors() {
+            const yearsWithData = appData.progress ? Object.keys(appData.progress).sort((a, b) => b - a) : [];
+            const currentYearString = new Date().getFullYear().toString();
+            if (!yearsWithData.includes(currentYearString)) {
+                yearsWithData.push(currentYearString);
+                yearsWithData.sort((a, b) => b - a);
+            }
+
+            reportYearSelect.innerHTML = yearsWithData.map(y => `<option value="${y}" ${y == currentYear ? 'selected' : ''}>${y}</option>`).join('');
+            
+            const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+            reportMonthSelect.innerHTML = months.map((m, i) => `<option value="${i}" ${i == currentMonth ? 'selected' : ''}>${m}</option>`).join('');
+        }
+
+        function generateReport() {
+            const year = reportYearSelect.value;
+            const month = reportMonthSelect.value;
+            
+            let mainReportHTML = '';
+            const activeHabits = appData.habits.filter(h => !h.isArchived);
+
+            if (!appData.progress[year] || !appData.progress[year][month] || activeHabits.length === 0) {
+                mainReportHTML = `<p class="text-center text-slate-500 py-10">Tidak ada data kebiasaan aktif untuk periode ini.</p>`;
+            } else {
+                const habitTotals = activeHabits.reduce((acc, habit) => {
+                    acc[habit.id] = { name: habit.name, total: 0 };
+                    return acc;
+                }, {});
+
+                let totalCompleted = 0;
+                const daysInMonth = new Date(year, parseInt(month) + 1, 0).getDate();
+                const totalPossibleInMonth = activeHabits.length * daysInMonth;
+                
+                const firstDayForReportMonth = (new Date(year, month, 1).getDay() + 6) % 7;
+
+                activeHabits.forEach(habit => {
+                    const progress = getHabitProgress(habit.id, year, month);
+                    for (let i = 1; i <= daysInMonth; i++) {
+                        const dayPositionInGrid = firstDayForReportMonth + i - 1;
+                        const week = Math.floor(dayPositionInGrid / 7);
+                        const dayOfWeek = (new Date(year, month, i).getDay() + 6) % 7;
+                        if(progress.weeks[week]?.[dayOfWeek]?.completed) {
+                            habitTotals[habit.id].total++;
+                            totalCompleted++;
+                        }
+                    }
+                });
+
+                const completionRate = totalPossibleInMonth > 0 ? ((totalCompleted / totalPossibleInMonth) * 100).toFixed(1) : 0;
+                const sortedHabits = Object.values(habitTotals).sort((a, b) => b.total - a.total);
+                const mostConsistentHabit = sortedHabits[0]?.total > 0 ? sortedHabits[0].name : '-';
+                
+                const firstDayOfMonth = (new Date(year, month, 1).getDay() + 6) % 7;
+
+                let heatmapHTML = `<h4 class="text-lg font-semibold text-slate-300 mb-4">Aktivitas Bulanan</h4><div class="heatmap-grid mb-8">`;
+                const heatmapDays = ['S', 'S', 'R', 'K', 'J', 'S', 'M'];
+                heatmapDays.forEach(d => {
+                    heatmapHTML += `<div class="font-bold text-xs text-center text-slate-500">${d}</div>`;
+                });
+                heatmapHTML += `</div><div class="heatmap-grid">`;
+                
+                for(let i=0; i < firstDayOfMonth; i++) { heatmapHTML += `<div></div>`; }
+
+                for (let i = 1; i <= daysInMonth; i++) {
+                    let completions = 0;
+                    activeHabits.forEach(habit => {
+                        const dayPositionInGrid = firstDayOfMonth + i - 1;
+                        const week = Math.floor(dayPositionInGrid / 7);
+                        const dayOfWeek = (new Date(year, month, i).getDay() + 6) % 7;
+                        const progress = getHabitProgress(habit.id, year, month);
+                        if(progress.weeks[week]?.[dayOfWeek]?.completed) {
+                            completions++;
+                        }
+                    });
+
+                    const percentage = activeHabits.length > 0 ? completions / activeHabits.length : 0;
+                    let bgColor = 'bg-slate-700/50';
+                    if (percentage > 0) bgColor = 'bg-emerald-900/50';
+                    if (percentage > 0.4) bgColor = 'bg-emerald-600/60';
+                    if (percentage > 0.7) bgColor = 'bg-emerald-400';
+
+                    heatmapHTML += `
+                        <div class="heatmap-day ${bgColor} border border-white/5" title="${completions} selesai pada tgl ${i}">
+                            <div class="heatmap-day-content text-white/80">${i}</div>
+                        </div>`;
+                }
+                heatmapHTML += `</div>`;
+                
+                let statsHTML = `
+                    <h4 class="text-lg font-semibold text-slate-300 mt-8 mb-4">Statistik Ringkas</h4>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
+                        <div class="bg-blue-900/20 border border-blue-500/20 p-5 rounded-2xl flex flex-col justify-center">
+                            <div class="text-3xl font-bold text-blue-400 mb-1">${completionRate}%</div>
+                            <div class="text-xs font-medium text-blue-300 uppercase tracking-wider">Selesai</div>
+                        </div>
+                        <div class="bg-emerald-900/20 border border-emerald-500/20 p-5 rounded-2xl flex flex-col justify-center">
+                            <div class="text-3xl font-bold text-emerald-400 mb-1">${totalCompleted}</div>
+                            <div class="text-xs font-medium text-emerald-300 uppercase tracking-wider">Total Checklist</div>
+                        </div>
+                         <div class="bg-purple-900/20 border border-purple-500/20 p-5 rounded-2xl flex flex-col justify-center min-h-[100px]">
+                            <div class="text-lg font-bold text-purple-400 mb-1 line-clamp-2">${mostConsistentHabit}</div>
+                            <div class="text-xs font-medium text-purple-300 uppercase tracking-wider">Terkonsisten</div>
+                        </div>
+                    </div>`;
+                mainReportHTML = heatmapHTML + statsHTML;
+            }
+
+            let archivedHTML = '';
+            const archivedHabits = appData.habits.filter(h => h.isArchived);
+            if (archivedHabits.length > 0) {
+                archivedHTML += `<div class="mt-10 pt-8 border-t border-white/10">
+                    <h4 class="text-lg font-semibold text-slate-300 mb-4 flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
+                        Arsip
+                    </h4>
+                    <ul class="space-y-3">`;
+                
+                archivedHabits.forEach(habit => {
+                    archivedHTML += `<li class="flex justify-between items-center bg-slate-800/50 border border-white/5 p-4 rounded-xl">
+                        <span class="text-slate-300 font-medium">${habit.name}</span>
+                        <div class="flex gap-2">
+                            <button class="restore-btn text-xs bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 font-semibold py-1.5 px-3 rounded-lg transition-colors" data-habit-id="${habit.id}">Pulihkan</button>
+                            <button class="permanent-delete-btn text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 font-semibold py-1.5 px-3 rounded-lg transition-colors" data-habit-id="${habit.id}">Hapus</button>
+                        </div>
+                    </li>`;
+                });
+
+                archivedHTML += `</ul></div>`;
+            }
+            
+            reportContent.innerHTML = mainReportHTML + archivedHTML;
+        }
+
+        function handleDownloadPdf() {
+            const { jsPDF } = window.jspdf;
+            const reportElement = document.getElementById('report-content');
+            const year = reportYearSelect.options[reportYearSelect.selectedIndex].text;
+            const month = reportMonthSelect.options[reportMonthSelect.selectedIndex].text;
+            const filename = `Laporan_Habit_${month}_${year}.pdf`;
+
+            downloadPdfBtn.innerHTML = `<svg class="animate-spin h-4 w-4 text-red-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Proses...`;
+            downloadPdfBtn.disabled = true;
+            
+            // Change bg for PDF capture
+            const originalColor = reportElement.style.color;
+            reportElement.style.color = '#000'; 
+            reportElement.style.background = '#fff';
+            reportElement.style.padding = '20px';
+            
+            html2canvas(reportElement, { scale: 2 }).then(canvas => {
+                // Reset styles
+                reportElement.style.color = '';
+                reportElement.style.background = '';
+                reportElement.style.padding = '';
+
+                const imgData = canvas.toDataURL('image/png');
+                const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+                const pdfWidth = pdf.internal.pageSize.getWidth();
+                const ratio = canvas.width / canvas.height;
+                const imgWidth = pdfWidth - 40;
+                const imgHeight = imgWidth / ratio;
+                
+                pdf.text(`Laporan Kebiasaan - ${month} ${year}`, 20, 30);
+                pdf.addImage(imgData, 'PNG', 20, 50, imgWidth, imgHeight);
+                pdf.save(filename);
+
+                downloadPdfBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" /></svg> Download PDF`;
+                downloadPdfBtn.disabled = false;
+            }).catch(err => {
+                reportElement.style.color = '';
+                reportElement.style.background = '';
+                reportElement.style.padding = '';
+                downloadPdfBtn.innerHTML = `Download PDF`;
+                downloadPdfBtn.disabled = false;
+                console.error("PDF generation failed:", err);
+                showNotification("Gagal membuat PDF", true);
+            });
+        }
+        
+        function handleExportData() {
+            if (!appData.habits || appData.habits.length === 0) {
+                showNotification("Tidak ada data untuk diekspor", true);
+                return;
+            }
+            const dataStr = JSON.stringify(appData, null, 2);
+            const dataBlob = new Blob([dataStr], {type: "application/json"});
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.download = `habit_tracker_backup_${new Date().toISOString().slice(0, 10)}.json`;
+            link.href = url;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        function handleImportData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const importedData = JSON.parse(e.target.result);
+                    if (importedData && Array.isArray(importedData.habits) && typeof importedData.progress === 'object') {
+                        appData = importedData;
+                        saveData();
+                        
+                        const today = new Date();
+                        currentYear = today.getFullYear();
+                        currentMonth = today.getMonth();
+                        const firstDayOfMonth = (new Date(currentYear, currentMonth, 1).getDay() + 6) % 7;
+                        const dayPositionInGrid = firstDayOfMonth + today.getDate() - 1;
+                        currentWeek = Math.floor(dayPositionInGrid / 7);
+
+                        renderAll();
+                        showNotification("Data berhasil diimpor");
+                    } else {
+                        showNotification("File tidak valid", true);
+                    }
+                } catch (error) {
+                    showNotification("Gagal membaca file", true);
+                    console.error("Import error:", error);
+                } finally {
+                    importFileInput.value = '';
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function handleReportModalClick(event) {
+             const target = event.target.closest('.restore-btn, .permanent-delete-btn');
+             if (!target) return;
+
+             const habitId = parseInt(target.dataset.habitId);
+             const habit = appData.habits.find(h => h.id === habitId);
+             if (!habit) return;
+
+             if (target.classList.contains('restore-btn')) {
+                habit.isArchived = false;
+                saveData();
+                renderAll(); 
+                generateReport(); 
+                showNotification("Kebiasaan dipulihkan");
+             } else if (target.classList.contains('permanent-delete-btn')) {
+                const habitIndex = appData.habits.findIndex(h => h.id === habitId);
+                 if (habitIndex > -1) {
+                    appData.habits.splice(habitIndex, 1);
+                    Object.values(appData.progress).forEach(yearData => {
+                        Object.values(yearData).forEach(monthData => {
+                            delete monthData[habitId];
+                        });
+                    });
+                    saveData();
+                    renderAll();
+                    generateReport();
+                    showNotification("Kebiasaan dihapus permanen", true);
+                }
+             }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            addHabitBtn.addEventListener('click', handleAddHabit);
+            newHabitInput.addEventListener('keypress', (event) => {
+                if (event.key === 'Enter') handleAddHabit();
+            });
+            habitTable.addEventListener('click', handleTableClick);
+            saveNoteBtn.addEventListener('click', handleSaveNote);
+            cancelNoteBtn.addEventListener('click', closeNoteModal);
+            noteModal.addEventListener('click', (e) => {
+                if (e.target === noteModal) closeNoteModal();
+            });
+            weekSelector.addEventListener('click', handleWeekChange);
+            prevMonthBtn.addEventListener('click', () => changeMonth(-1));
+            nextMonthBtn.addEventListener('click', () => changeMonth(1));
+            showReportBtn.addEventListener('click', openReportModal);
+            closeReportBtn.addEventListener('click', closeReportModal);
+            reportModal.addEventListener('click', (e) => {
+                if (e.target.id === 'report-modal') closeReportModal();
+            });
+            reportModal.addEventListener('click', handleReportModalClick);
+            reportYearSelect.addEventListener('change', generateReport);
+            reportMonthSelect.addEventListener('change', generateReport);
+            downloadPdfBtn.addEventListener('click', handleDownloadPdf);
+            exportBtn.addEventListener('click', handleExportData);
+            importBtnLabel.addEventListener('click', () => importFileInput.click());
+            importFileInput.addEventListener('change', handleImportData);
+            
+            loadData();
+            renderAll();
+            initSortable();
+        });
+
+    </script>
+</body>
+</html>
