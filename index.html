@@ -10,6 +10,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <!-- Library untuk Drag-and-Drop -->
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <!-- Library untuk Grafik -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         
@@ -91,7 +93,6 @@
         }
         .habit-cell.completed::before {
             content: ''; 
-            /* Icon handled by SVG in JS now for cleaner look, or kept simple checkmark */
         }
         .habit-cell.disabled {
             background-color: rgba(0, 0, 0, 0.2);
@@ -245,20 +246,20 @@
             background-color: rgba(59, 130, 246, 0.2);
         }
         
-        /* Scrollbar */
-        ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
+        /* Scrollbar Customization for Chart */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
         }
-        ::-webkit-scrollbar-track {
-            background: rgba(0,0,0,0.1); 
-        }
-        ::-webkit-scrollbar-thumb {
-            background: rgba(255,255,255,0.1); 
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.02);
             border-radius: 4px;
         }
-        ::-webkit-scrollbar-thumb:hover {
-            background: rgba(255,255,255,0.2); 
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.25);
         }
     </style>
 </head>
@@ -272,20 +273,18 @@
     <div class="w-full max-w-5xl mx-auto glass-panel rounded-2xl p-6 sm:p-8 relative z-10">
         <header class="mb-8 flex flex-col lg:flex-row justify-between items-center gap-6 border-b border-white/10 pb-6">
             <div class="flex flex-col lg:flex-row items-center justify-center lg:justify-start gap-4 text-center lg:text-left">
-    <!-- Ikon dari Raw Github -->
-    <img src="https://raw.githubusercontent.com/gerryramdani-star/suarapro-azure/refs/heads/main/asset/habit%20tracker%20logo.png" 
-         alt="Logo" 
-         class="w-12 h-12 drop-shadow-lg hover:scale-110 transition-transform duration-300">
-    
-    <!-- Judul dengan warna kustom -->
-    <div>
-        <h1 class="text-3xl md:text-4xl font-bold tracking-tight">
-            <span class="text-white drop-shadow-md">Habit</span>
-            <span class="text-pink-400 drop-shadow-md">Tracker</span>
-        </h1>
-        <p class="text-slate-400 mt-1 text-sm font-light">Bangun rutinitas, raih impianmu.</p>
-    </div>
-</div>
+                <img src="https://raw.githubusercontent.com/gerryramdani-star/suarapro-azure/refs/heads/main/asset/habit%20tracker%20logo.png" 
+                     alt="Logo" 
+                     class="w-12 h-12 drop-shadow-lg hover:scale-110 transition-transform duration-300">
+                <div>
+                    <h1 class="text-3xl md:text-4xl font-bold tracking-tight">
+                        <span class="text-white drop-shadow-md">Habit</span>
+                        <span class="text-pink-400 drop-shadow-md">Tracker</span>
+                    </h1>
+                    <p class="text-slate-400 mt-1 text-sm font-light">Bangun rutinitas, raih impianmu.</p>
+                </div>
+            </div>
+
             <div class="flex flex-wrap justify-center gap-3">
                 <button id="import-btn-label" class="glass-btn text-sm font-medium py-2.5 px-4 rounded-xl flex items-center gap-2 text-slate-200">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
@@ -361,7 +360,7 @@
     
     <!-- Modal untuk Laporan -->
     <div id="report-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 hidden opacity-0">
-        <div class="modal-content w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl p-8 transform transition-all scale-95">
+        <div class="modal-content w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl p-8 transform transition-all scale-95 custom-scrollbar">
             <div class="flex justify-between items-center mb-8">
                 <h3 class="text-2xl font-bold text-white flex items-center gap-3">
                     <span class="bg-indigo-500/20 text-indigo-400 p-2 rounded-xl">
@@ -408,6 +407,7 @@
         let appData = { habits: [], progress: {} };
         const days = ['S', 'S', 'R', 'K', 'J', 'S', 'M'];
         let currentEditingNote = { habitId: null, dayIndex: null };
+        let chartInstances = []; // To keep track of charts and destroy them
         
         const initialDate = new Date();
         let currentYear = initialDate.getFullYear();
@@ -802,6 +802,10 @@
         }
 
         function generateReport() {
+            // Clear chart instances
+            chartInstances.forEach(chart => chart.destroy());
+            chartInstances = [];
+
             const year = reportYearSelect.value;
             const month = reportMonthSelect.value;
             
@@ -820,6 +824,9 @@
                 const daysInMonth = new Date(year, parseInt(month) + 1, 0).getDate();
                 const totalPossibleInMonth = activeHabits.length * daysInMonth;
                 
+                // Daily completion counts for chart
+                const dailyCompletions = Array(daysInMonth).fill(0);
+
                 const firstDayForReportMonth = (new Date(year, month, 1).getDay() + 6) % 7;
 
                 activeHabits.forEach(habit => {
@@ -831,17 +838,34 @@
                         if(progress.weeks[week]?.[dayOfWeek]?.completed) {
                             habitTotals[habit.id].total++;
                             totalCompleted++;
+                            dailyCompletions[i-1]++;
                         }
                     }
                 });
 
                 const completionRate = totalPossibleInMonth > 0 ? ((totalCompleted / totalPossibleInMonth) * 100).toFixed(1) : 0;
+                
+                // Logic for "Most Consistent" (Handling Ties)
                 const sortedHabits = Object.values(habitTotals).sort((a, b) => b.total - a.total);
-                const mostConsistentHabit = sortedHabits[0]?.total > 0 ? sortedHabits[0].name : '-';
+                const maxCount = sortedHabits[0]?.total || 0;
+                const topHabits = sortedHabits.filter(h => h.total === maxCount && maxCount > 0);
+                
+                // Truncate logic for too many habits
+                let mostConsistentDisplay = '-';
+                if (topHabits.length > 0) {
+                    const names = topHabits.map(h => h.name);
+                    if (names.length > 2) {
+                        mostConsistentDisplay = `${names.slice(0, 2).join(', ')} & ${names.length - 2} lainnya`;
+                    } else {
+                        mostConsistentDisplay = names.join(', ');
+                    }
+                }
+                
+                const mostConsistentLabel = topHabits.length > 1 ? "Terkonsisten (Seri)" : "Terkonsisten";
                 
                 const firstDayOfMonth = (new Date(year, month, 1).getDay() + 6) % 7;
 
-                let heatmapHTML = `<h4 class="text-lg font-semibold text-slate-300 mb-4">Aktivitas Bulanan</h4><div class="heatmap-grid mb-8">`;
+                let heatmapHTML = `<div id="pdf-heatmap-section"><h4 class="text-lg font-semibold text-slate-300 mb-4">Aktivitas Bulanan</h4><div class="heatmap-grid mb-8">`;
                 const heatmapDays = ['S', 'S', 'R', 'K', 'J', 'S', 'M'];
                 heatmapDays.forEach(d => {
                     heatmapHTML += `<div class="font-bold text-xs text-center text-slate-500">${d}</div>`;
@@ -873,7 +897,7 @@
                             <div class="heatmap-day-content text-white/80">${i}</div>
                         </div>`;
                 }
-                heatmapHTML += `</div>`;
+                heatmapHTML += `</div></div>`;
                 
                 let statsHTML = `
                     <h4 class="text-lg font-semibold text-slate-300 mt-8 mb-4">Statistik Ringkas</h4>
@@ -887,11 +911,42 @@
                             <div class="text-xs font-medium text-emerald-300 uppercase tracking-wider">Total Checklist</div>
                         </div>
                          <div class="bg-purple-900/20 border border-purple-500/20 p-5 rounded-2xl flex flex-col justify-center min-h-[100px]">
-                            <div class="text-lg font-bold text-purple-400 mb-1 line-clamp-2">${mostConsistentHabit}</div>
-                            <div class="text-xs font-medium text-purple-300 uppercase tracking-wider">Terkonsisten</div>
+                            <div class="text-lg font-bold text-purple-400 mb-1 line-clamp-2" style="overflow: hidden; text-overflow: ellipsis;">${mostConsistentDisplay}</div>
+                            <div class="text-xs font-medium text-purple-300 uppercase tracking-wider">${mostConsistentLabel}</div>
                         </div>
                     </div>`;
-                mainReportHTML = heatmapHTML + statsHTML;
+                
+                // --- CHART CONTAINERS ---
+                // Dynamic Height for scrollable chart
+                const barChartHeight = Math.max(300, activeHabits.length * 40);
+
+                let chartsHTML = `
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
+                        <div class="bg-slate-800/50 border border-white/5 p-4 rounded-2xl">
+                            <h5 class="text-sm font-semibold text-slate-300 mb-4">Performa Kebiasaan</h5>
+                            <div class="relative w-full h-[300px] overflow-y-auto custom-scrollbar chart-scroll-container">
+                                <div style="height: ${barChartHeight}px; position: relative;">
+                                    <canvas id="habitBarChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-slate-800/50 border border-white/5 p-4 rounded-2xl">
+                             <h5 class="text-sm font-semibold text-slate-300 mb-4">Tren Harian</h5>
+                             <div class="relative w-full h-[300px]">
+                                <canvas id="dailyLineChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                mainReportHTML = heatmapHTML + statsHTML + chartsHTML;
+                
+                // Use setTimeout to wait for DOM update before rendering charts
+                setTimeout(() => {
+                    if(document.getElementById('habitBarChart')) {
+                        renderCharts(Object.values(habitTotals), dailyCompletions, daysInMonth);
+                    }
+                }, 0);
             }
 
             let archivedHTML = '';
@@ -920,6 +975,88 @@
             reportContent.innerHTML = mainReportHTML + archivedHTML;
         }
 
+        function renderCharts(habitData, dailyData, daysCount) {
+            const textColor = '#94a3b8'; // Slate 400
+
+            // Bar Chart
+            const ctxBar = document.getElementById('habitBarChart').getContext('2d');
+            const barChart = new Chart(ctxBar, {
+                type: 'bar',
+                data: {
+                    labels: habitData.map(h => h.name),
+                    datasets: [{
+                        label: 'Total Selesai',
+                        data: habitData.map(h => h.total),
+                        backgroundColor: 'rgba(99, 102, 241, 0.7)', // Indigo
+                        borderColor: 'rgba(99, 102, 241, 1)',
+                        borderWidth: 1,
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false, // Allows custom height
+                    indexAxis: 'y',
+                    animation: false,
+                    scales: {
+                        x: {
+                            ticks: { color: textColor },
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' }
+                        },
+                        y: {
+                            ticks: { color: textColor },
+                            grid: { display: false }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+            chartInstances.push(barChart);
+
+            // Line Chart
+            const ctxLine = document.getElementById('dailyLineChart').getContext('2d');
+            const daysLabels = Array.from({length: daysCount}, (_, i) => i + 1);
+            const lineChart = new Chart(ctxLine, {
+                type: 'line',
+                data: {
+                    labels: daysLabels,
+                    datasets: [{
+                        label: 'Penyelesaian Harian',
+                        data: dailyData,
+                        backgroundColor: 'rgba(16, 185, 129, 0.2)', // Emerald
+                        borderColor: '#10b981',
+                        borderWidth: 2,
+                        tension: 0.3,
+                        fill: true,
+                        pointBackgroundColor: '#065f46',
+                        pointRadius: 3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    scales: {
+                        x: {
+                            ticks: { color: textColor },
+                            grid: { display: false }
+                        },
+                        y: {
+                            ticks: { color: textColor, stepSize: 1 },
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+            chartInstances.push(lineChart);
+        }
+
         function handleDownloadPdf() {
             const { jsPDF } = window.jspdf;
             const reportElement = document.getElementById('report-content');
@@ -930,17 +1067,154 @@
             downloadPdfBtn.innerHTML = `<svg class="animate-spin h-4 w-4 text-red-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Proses...`;
             downloadPdfBtn.disabled = true;
             
-            // Change bg for PDF capture
-            const originalColor = reportElement.style.color;
-            reportElement.style.color = '#000'; 
-            reportElement.style.background = '#fff';
-            reportElement.style.padding = '20px';
+            // 1. Clone Node untuk dimanipulasi tanpa mengubah tampilan asli
+            const clone = reportElement.cloneNode(true);
+
+            // Remove Heatmap for PDF
+            const heatmapSection = clone.querySelector('#pdf-heatmap-section');
+            if (heatmapSection) {
+                heatmapSection.remove();
+            }
+
+            // --- FIX FOR CHART.JS CANVAS & SCROLL ---
+            const originalCanvases = reportElement.querySelectorAll('canvas');
+            const cloneCanvases = clone.querySelectorAll('canvas');
+
+            originalCanvases.forEach((canvas, index) => {
+                const destCanvas = cloneCanvases[index];
+                const destCtx = destCanvas.getContext('2d');
+                destCanvas.width = canvas.width;
+                destCanvas.height = canvas.height;
+                destCtx.drawImage(canvas, 0, 0);
+            });
+
+            // Expand Scrollable Containers for PDF
+            const scrollContainers = clone.querySelectorAll('.chart-scroll-container');
+            scrollContainers.forEach(container => {
+                container.style.height = 'auto';
+                container.style.overflow = 'visible';
+            });
+            // -------------------------------
+
+            // 2. Buat container invisible
+            const container = document.createElement('div');
+            container.style.position = 'absolute';
+            container.style.top = '-9999px';
+            container.style.left = '0';
+            container.style.width = '800px'; // Lebar standar A4
+            container.style.backgroundColor = '#ffffff';
+            container.style.padding = '40px';
+            container.style.color = '#000000'; // Default text black
+            container.style.fontFamily = 'Inter, sans-serif';
+            container.appendChild(clone);
+            document.body.appendChild(container);
+
+            // 3. ITERASI DOM UNTUK KONTRAS TINGGI (High Contrast Force)
+            const allElements = clone.querySelectorAll('*');
             
-            html2canvas(reportElement, { scale: 2 }).then(canvas => {
-                // Reset styles
-                reportElement.style.color = '';
-                reportElement.style.background = '';
-                reportElement.style.padding = '';
+            allElements.forEach(el => {
+                // Hapus efek blur/glass jika ada
+                el.style.backdropFilter = 'none';
+                el.style.boxShadow = 'none';
+
+                // A. TEXT COLORS - Paksa menjadi gelap
+                if (el.classList.contains('text-slate-200') || 
+                    el.classList.contains('text-slate-300') || 
+                    el.classList.contains('text-slate-400') || 
+                    el.classList.contains('text-slate-500') ||
+                    el.classList.contains('text-white') ) {
+                    
+                    el.classList.remove('text-slate-200', 'text-slate-300', 'text-slate-400', 'text-slate-500', 'text-white');
+                    el.classList.add('text-gray-900');
+                    el.style.color = '#111827'; 
+                }
+                
+                if (el.className.includes('text-white/80')) {
+                    el.className = el.className.replace('text-white/80', 'text-gray-900');
+                }
+
+                if (el.classList.contains('font-light')) {
+                    el.classList.remove('font-light');
+                    el.classList.add('font-normal');
+                }
+
+                // --- PERBAIKAN TEXT TERPOTONG (CLIPPING FIX) ---
+                if (el.classList.contains('line-clamp-2')) {
+                    el.classList.remove('line-clamp-2');
+                    el.style.overflow = 'visible';
+                    el.style.display = 'block'; 
+                    el.style.paddingBottom = '4px'; 
+                    el.style.lineHeight = '1.4'; 
+                }
+
+                // B. HEATMAP CELLS
+                if (el.className.includes('bg-slate-700/50')) {
+                    el.className = el.className.replace('bg-slate-700/50', 'bg-gray-200');
+                    el.style.backgroundColor = '#e5e7eb'; 
+                    el.style.border = '1px solid #d1d5db';
+                }
+                if (el.className.includes('bg-emerald-')) {
+                    el.style.fontWeight = 'bold';
+                    el.style.color = '#ffffff';
+                    el.style.border = 'none';
+                }
+
+                // C. STATS CARDS & CHART CONTAINERS
+                if (el.className.includes('bg-blue-900/20')) {
+                    el.className = el.className.replace('bg-blue-900/20', 'bg-blue-50');
+                    el.style.backgroundColor = '#eff6ff';
+                    el.style.borderColor = '#bfdbfe';
+                }
+                if (el.className.includes('bg-emerald-900/20')) {
+                    el.className = el.className.replace('bg-emerald-900/20', 'bg-green-50');
+                    el.style.backgroundColor = '#f0fdf4';
+                    el.style.borderColor = '#bbf7d0';
+                }
+                if (el.className.includes('bg-purple-900/20')) {
+                    el.className = el.className.replace('bg-purple-900/20', 'bg-purple-50');
+                    el.style.backgroundColor = '#faf5ff';
+                    el.style.borderColor = '#e9d5ff';
+                }
+                if (el.className.includes('bg-slate-800/50')) {
+                     el.style.backgroundColor = '#f8fafc'; 
+                     el.style.borderColor = '#e2e8f0';
+                }
+
+                if (el.className.includes('text-blue-400')) {
+                    el.className = el.className.replace('text-blue-400', 'text-blue-800');
+                    el.style.color = '#1e40af';
+                }
+                if (el.className.includes('text-blue-300')) {
+                    el.className = el.className.replace('text-blue-300', 'text-blue-900');
+                    el.style.color = '#1e3a8a';
+                }
+                
+                if (el.className.includes('text-emerald-400')) {
+                    el.className = el.className.replace('text-emerald-400', 'text-green-800');
+                    el.style.color = '#166534';
+                }
+                if (el.className.includes('text-emerald-300')) {
+                    el.className = el.className.replace('text-emerald-300', 'text-green-900');
+                    el.style.color = '#14532d';
+                }
+
+                if (el.className.includes('text-purple-400')) {
+                    el.className = el.className.replace('text-purple-400', 'text-purple-800');
+                    el.style.color = '#6b21a8';
+                }
+                if (el.className.includes('text-purple-300')) {
+                    el.className = el.className.replace('text-purple-300', 'text-purple-900');
+                    el.style.color = '#581c87';
+                }
+                
+                if (el.className.includes('border-white/5')) {
+                    el.className = el.className.replace('border-white/5', '');
+                }
+            });
+
+            // 4. Capture
+            html2canvas(container, { scale: 2 }).then(canvas => {
+                document.body.removeChild(container);
 
                 const imgData = canvas.toDataURL('image/png');
                 const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
@@ -949,6 +1223,7 @@
                 const imgWidth = pdfWidth - 40;
                 const imgHeight = imgWidth / ratio;
                 
+                pdf.setFontSize(16);
                 pdf.text(`Laporan Kebiasaan - ${month} ${year}`, 20, 30);
                 pdf.addImage(imgData, 'PNG', 20, 50, imgWidth, imgHeight);
                 pdf.save(filename);
@@ -956,9 +1231,7 @@
                 downloadPdfBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" /></svg> Download PDF`;
                 downloadPdfBtn.disabled = false;
             }).catch(err => {
-                reportElement.style.color = '';
-                reportElement.style.background = '';
-                reportElement.style.padding = '';
+                if(document.body.contains(container)) document.body.removeChild(container);
                 downloadPdfBtn.innerHTML = `Download PDF`;
                 downloadPdfBtn.disabled = false;
                 console.error("PDF generation failed:", err);
